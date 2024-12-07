@@ -97,7 +97,7 @@ def send_verification_email(user):
         return jsonify({"error": "Failed to send email"}), 500
 
 
-def paginate_query(query, model_schema, page=1, per_page=10):
+def paginated_result(query, model_schema, page=1, per_page=10):
 
     """
     Function to handle pagination of a SQLAlchemy query.
