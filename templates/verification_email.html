@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Verify Your Email</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            margin: 0;
+            padding: 20px;
+            background-color: #f9f9f9;
+        }
+        .container {
+            background-color: #fff;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            max-width: 600px;
+            margin: 0 auto;
+        }
+        .header {
+            text-align: left;
+            margin-bottom: 20px;
+        }
+        .verification-code {
+            font-size: 20px;
+            font-weight: bold;
+            color: #2C3E50;
+            padding: 10px;
+            background-color: #ECF0F1;
+            border-radius: 4px;
+        }
+        .footer {
+            text-align: left;
+            margin-top: 30px;
+            font-size: 14px;
+            color: #7f8c8d;
+        }
+        .footer a {
+            color: #3498db;
+            text-decoration: none;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h2>Hey {{ user.first_name|capitalize }} {{user.last_name|capitalize}},</h2>
+        </div>
+        <p>Great to see you aboard! Let's quickly verify your email to get you started.</p>
+        <p>Your verification code is:</p>
+        <div class="verification-code">{{ verification_code }}</div>
+        <p>Remember, this code is valid only for the next 2 minutes.</p>
+        <p>We can't wait for you to explore all the amazing features we have to offer!</p>
+        
+        <div class="footer">
+            <p>Cheers,</p>
+            <p>{{ your_name }}</p>
+        </div>
+    </div>
+</body>
+</html>
