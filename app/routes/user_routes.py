@@ -3,7 +3,7 @@ from flask import Blueprint, request, jsonify
 from app.database.models import User
 from extentions import db
 from app.schemas.user_schema import UserSchema
-from app.utils import response, is_valid_email, generate_access_token_and_refresh_token, send_verification_email, paginate_query
+from app.utils import response, is_valid_email, generate_access_token_and_refresh_token, send_verification_email, paginated_result
 from flask_jwt_extended import jwt_required, get_jwt_identity
 from datetime import datetime
 from marshmallow import ValidationError
@@ -137,7 +137,7 @@ def login():
         if not is_valid_email(data.get('email')):
             return jsonify(response(False, "invalid email address")), 400
 
-        user = User.query.filter_by(email=data.get('email')).first()
+        user = User.query.filter_by(email=data.get('email'), is_deleted = False).first()
         if not user:
             return jsonify(response(True, "user does not exist")), 400
 
@@ -226,7 +226,7 @@ def get_all_users():
         page = request.args.get('page', 1, type=int)
         per_page = request.args.get('per_page', 10, type=int)
         query = User.query.filter_by(is_deleted = False)
-        result = paginate_query(query, UserSchema, page, per_page)
+        result = paginated_result(query, UserSchema, page, per_page)
         response_data = {
             'data': result['data'],
             'meta': result['pagination']
