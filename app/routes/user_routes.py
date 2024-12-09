@@ -235,4 +235,26 @@ def get_all_users():
     except Exception as e:
          return jsonify(response(False, "Something went wrong", error=str(e))), 500
 
+@bp.route("/update-password", methods=["POST"])
+@jwt_required()
+def change_password():
+    try:
+        user_data = json.loads(get_jwt_identity())
+        id = user_data.get('user_id')
+        data =  request.get_json()
+
+        user = User.query.filter_by(user_id = id, is_deleted=False).first()
+        if not user:
+            raise Exception("user not found")
+        
+        if not user.check_password(data.get('old_password')):
+            raise Exception("invalid password")
+        
+        user.hash_password(data.get('new_password'))
+        db.session.commit()
+        user_schema = UserSchema()
+        user_data = user_schema.dump(user)
+        return jsonify(response(True, "password updated success", user_data)), 200
+    except Exception as e:
+        return jsonify(response(False, "Something went wrong..", error=str(e))), 500
 
