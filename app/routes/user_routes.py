@@ -258,3 +258,4 @@ def change_password():
     except Exception as e:
         return jsonify(response(False, "Something went wrong..", error=str(e))), 500
 
+#successfully branch created by megha
