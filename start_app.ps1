@@ -12,4 +12,5 @@ $env:MAIL_PASSWORD="mdbx qvmk kmwr tlmv"
 $env:MAIL_DEFAULT_SENDER="akshaykumravat0701@gmail.com"
 
 # Run the Flask app
-python run.py
+# python run.py
+waitress-serve --port=5000 run:app

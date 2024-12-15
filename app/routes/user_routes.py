@@ -29,10 +29,10 @@ def create_user():
     """
     try:
         data = request.get_json()
-        print(data)
+        # print(data)
         user_schema = UserSchema()
         validated_data = user_schema.load(data)
-        print(validated_data)
+        # print(validated_data)
 
         if User.query.filter_by(email=data.get('email')).first():
             return jsonify(response(False, "email already exist")), 400
