@@ -59,6 +59,22 @@ class User(db.Model):
         self.set_verification_code()
         db.session.commit()
 
+class Recipe(db.Model):
+    __tablename__ = "recipes"
+    recipe_id = db.Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    author_id = db.Column(UUID(as_uuid=True), db.ForeignKey("user.user_id"), nullable=False)
+    title = db.Column(db.String(255), nullable=False)
+    description = db.Column(db.Text, nullable=True)
+    content = db.Column(db.Text, nullable=True)
+    created_at = db.Column(db.DateTime, default=db.func.now(), nullable=False)
+    updated_at = db.Column(db.DateTime, onupdate=db.func.now(), nullable=True)
+
+    # Relationship
+    author = db.relationship("User", backref=db.backref("recipes", lazy=True))
+
+    def __repr__(self):
+        return f"<Recipe(recipe_id={self.recipe_id}, title={self.title})>"
+
 
 
 

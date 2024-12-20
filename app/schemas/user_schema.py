@@ -17,3 +17,16 @@ class UserSchema(Schema):
     profile_image = fields.Str(dump_only=True)
     created_at = fields.DateTime(dump_only=True)
     updated_at = fields.DateTime(dump_only=True)
+
+
+class RecipeSchema(Schema):
+    uuid = fields.UUID(dump_only=True)  
+    title = fields.Str(required=True, validate=validate.Length(max=255))  
+    description = fields.Str(allow_none=True) 
+    content = fields.Str(required=True) 
+    author_id = fields.UUID(required=True, load_only=True)  
+    created_at = fields.DateTime(dump_only=True) 
+    updated_at = fields.DateTime(dump_only=True)  
+
+    # Relationships (optional if you need nested data later)
+    author = fields.Nested("UserSchema", dump_only=True) 
