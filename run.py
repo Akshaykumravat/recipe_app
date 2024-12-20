@@ -1,6 +1,6 @@
 from flask import Flask
 from extentions import db, migrate, ma, jwt, mail
-from app.routes import user_routes
+from app.routes import user_routes, recipe_routes
 from config import Config
 
 
@@ -14,6 +14,7 @@ def create_app():
     jwt.init_app(app)
     mail.init_app(app)
     app.register_blueprint(user_routes.bp)
+    app.register_blueprint(recipe_routes.bp)
 
     return app
 
