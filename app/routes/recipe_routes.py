@@ -2,10 +2,9 @@ import json
 from flask import Blueprint, request, jsonify
 from app.database.models import User, Recipe
 from extentions import db
-from app.schemas.user_schema import UserSchema, RecipeSchema
-from app.utils import response, is_valid_email, generate_access_token_and_refresh_token, send_verification_email, paginated_result
+from app.schemas.user_schema import RecipeSchema
+from app.utils import response, thank_you_email
 from flask_jwt_extended import jwt_required, get_jwt_identity
-from datetime import datetime
 from marshmallow import ValidationError
 
 
@@ -35,7 +34,7 @@ def create_recipe():
             new_recipe = Recipe(**validated_data)
             db.session.add(new_recipe)
             db.session.commit()
-            
+            thank_you_email(user_data, new_recipe)
             recipe_data = schema.dump(new_recipe)
             return jsonify(response(True, "Recipe created successfully", recipe_data)), 201
         except Exception as e:
