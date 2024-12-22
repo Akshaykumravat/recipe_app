@@ -114,3 +114,27 @@ def paginated_result(query, model_schema, page=1, per_page=10):
         'data': data,
         'pagination': pagination_metadata
     }
+
+
+def thank_you_email(user, recipe):
+    """
+    Send a ThankYou email.
+    """
+    from extentions import mail
+
+    try:
+        print(user, "user")
+        html_body = render_template('thankyou.html',
+            user=user,
+            recipe=recipe,
+            your_name = "Golden Recipe!!"
+        )
+
+        msg = Message("Thank You for Sharing Your Recipe",
+            recipients=[user.get('email')],
+            html=html_body  
+        )
+        mail.send(msg)
+    except Exception as e:
+        print(f"Error sending email: {e}")
+        return jsonify({"error": "Failed to send email"}), 500
