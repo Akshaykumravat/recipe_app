@@ -18,6 +18,10 @@ class UserSchema(Schema):
     created_at = fields.DateTime(dump_only=True)
     updated_at = fields.DateTime(dump_only=True)
 
+class ChangePasswordSchema(Schema):
+    old_password = fields.String(required=True)
+    new_password = fields.String(required=True, validate=lambda x: len(x) >= 8,)
+
 
 class RecipeSchema(Schema):
     recipe_id = fields.UUID(dump_only=True)  
@@ -30,3 +34,14 @@ class RecipeSchema(Schema):
 
     # Relationships (optional if you need nested data later)
     author = fields.Nested("UserSchema", dump_only=True) 
+
+class FavoritesSchema(Schema):
+    id = fields.UUID(dump_only=True)  
+    recipe_id = fields.UUID(required=True, load_only=True)
+    user_id = fields.UUID(required=True, load_only=True)  
+    created_at = fields.DateTime(dump_only=True) 
+    updated_at = fields.DateTime(dump_only=True)  
+
+    # Relationships (optional if you need nested data later)
+    user = fields.Nested("UserSchema", dump_only=True) 
+    recipe = fields.Nested("RecipeSchema", dump_only=True)

@@ -1,12 +1,13 @@
 import json
 from flask import Blueprint, request, jsonify
-from app.database.models import User
+from app.database.models import User, Favorites, Recipe
 from extentions import db
-from app.schemas.user_schema import UserSchema
+from app.schemas.schema import UserSchema, FavoritesSchema, ChangePasswordSchema
 from app.utils import response, is_valid_email, generate_access_token_and_refresh_token, send_verification_email, paginated_result
 from flask_jwt_extended import jwt_required, get_jwt_identity
 from datetime import datetime
 from marshmallow import ValidationError
+from sqlalchemy.exc import SQLAlchemyError
 
 
 
@@ -235,27 +236,91 @@ def get_all_users():
     except Exception as e:
          return jsonify(response(False, "Something went wrong", error=str(e))), 500
 
+
 @bp.route("/update-password", methods=["POST"])
 @jwt_required()
 def change_password():
+    """
+    Endpoint to allow a user to change their password.
+    Requires a valid JWT token for authentication.
+    """
     try:
         user_data = json.loads(get_jwt_identity())
-        id = user_data.get('user_id')
+        user_id  = user_data.get('user_id')
         data =  request.get_json()
+        schema = ChangePasswordSchema()
 
-        user = User.query.filter_by(user_id = id, is_deleted=False).first()
+        try:
+            validated_data = schema.load(data)
+        except ValidationError as err:
+            return jsonify(response(False, "Validation failed", err.messages)), 400
+    
+        user = User.query.filter_by(user_id = user_id, is_verified = True, is_deleted=False).first()
         if not user:
-            raise Exception("user not found")
+            return jsonify(response(False, "User not found")), 404
         
-        if not user.check_password(data.get('old_password')):
-            raise Exception("invalid password")
+
+        if not user.check_password(validated_data['old_password']):
+            return jsonify(response(False, "Invalid current password")), 401
         
         user.hash_password(data.get('new_password'))
         db.session.commit()
+
         user_schema = UserSchema()
         user_data = user_schema.dump(user)
         return jsonify(response(True, "password updated success", user_data)), 200
+    except SQLAlchemyError as db_err:
+        db.session.rollback()
+        return jsonify(response(False, "Database error occurred", error=str(db_err))), 500
     except Exception as e:
         return jsonify(response(False, "Something went wrong..", error=str(e))), 500
 
-#successfully branch created by megha
+
+@bp.route("/add-to-favorite", methods=["POST"])
+@jwt_required()
+def add_to_favorite():
+    """
+    Add a recipe to the user's favorites.
+    Requires a valid JWT token for authentication.
+    """
+    try:
+        user_data = json.loads(get_jwt_identity())
+        user_id = user_data.get('user_id')
+
+        data = request.get_json()
+        if not data:
+            return jsonify(response(False, "Invalid input: No data provided")), 400
+
+        schema = FavoritesSchema()
+
+        user = User.query.filter_by(user_id=user_id, is_verified=True, is_deleted=False).first()
+        if not user:
+            return jsonify(response(False, "User not found or not active")), 404
+
+        try:
+            validated_data = schema.load({**data, "user_id": user_id})
+        except ValidationError as err:
+            return jsonify(response(False, "Validation failed", err.messages)), 400
+
+        recipe = Recipe.query.filter_by(recipe_id=data.get('recipe_id')).first()
+        if not recipe:
+            return jsonify(response(False, "Recipe not found")), 404
+
+        favorite_existing = Favorites.query.filter_by(recipe_id=data.get('recipe_id'), user_id=user_id).first()
+        if favorite_existing:
+            return jsonify(response(False, "Recipe already added to favorites")), 409
+
+        favorites = Favorites(**validated_data)
+        db.session.add(favorites)
+        db.session.commit()
+
+        favorite_data = schema.dump(favorites)
+        return jsonify(response(True, "Recipe added to favorites successfully", favorite_data)), 200
+
+    except SQLAlchemyError as db_err:
+        db.session.rollback()
+        return jsonify(response(False, "Database error occurred", error=str(db_err))), 500
+
+    except Exception as e:
+        print("error", str(e))
+        return jsonify(response(False, "An unexpected error occurred", error=str(e))), 500
