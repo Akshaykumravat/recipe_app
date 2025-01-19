@@ -74,6 +74,22 @@ class Recipe(db.Model):
 
     def __repr__(self):
         return f"<Recipe(recipe_id={self.recipe_id}, title={self.title})>"
+    
+class Favorites(db.Model):
+    __tablename__ = "favorites"
+    id = db.Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4) 
+    recipe_id = db.Column(UUID(as_uuid=True), db.ForeignKey("recipes.recipe_id"), nullable=False) 
+    user_id = db.Column(UUID(as_uuid=True), db.ForeignKey("user.user_id"), nullable=False) 
+    created_at = db.Column(db.DateTime, default=db.func.now())
+    updated_at = db.Column(db.DateTime, onupdate=db.func.now())  
+
+    # Relationships
+    recipe = db.relationship("Recipe", backref=db.backref("favorites", lazy=True)) 
+    user = db.relationship("User", backref=db.backref("favorites", lazy=True))  
+
+    def __repr__(self):
+        return f"<Favorites(id={self.id})>"
+
 
 
 
