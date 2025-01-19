@@ -21,14 +21,14 @@ def create_recipe():
         data = request.get_json()
         schema = RecipeSchema()
 
-        user = User.query.filter_by(user_id=user_id, is_deleted=False).first()
+        user = User.query.filter_by(user_id=user_id, is_verified=True, is_deleted=False).first()
         if not user:
             return jsonify(response(False, "User not found")), 404
 
         try:
             validated_data = schema.load({**data, "author_id": user_id})
         except ValidationError as err:
-            return jsonify({"error": err.messages}), 400
+            return jsonify(response(False, err.messages)), 400
 
         try:
             new_recipe = Recipe(**validated_data)
@@ -40,6 +40,32 @@ def create_recipe():
         except Exception as e:
             db.session.rollback()
             return jsonify(response(False, "Failed to create recipe", error=str(e))), 500
+
+    except Exception as e:
+        return jsonify(response(False, "Something went wrong", error=str(e))), 500
+    
+
+@bp.route("/user", methods=["GET"])
+@jwt_required()
+def get_recipes_by_user():
+    try:
+       
+        user_data = json.loads(get_jwt_identity())
+        user_id = user_data.get('user_id')
+
+        if not user_id:
+            return jsonify(response(False, "User ID not found in token")), 400
+        
+        user = User.query.filter_by(user_id=user_id, is_verified=True, is_deleted=False).first()
+        if not user:
+            return jsonify(response(False, "User not found or not verified")), 404
+        
+        recipes = Recipe.query.filter_by(author_id=user_id).all()
+
+        schema = RecipeSchema(many=True)
+        recipe_data = schema.dump(recipes)
+
+        return jsonify(response(True, "Recipes retrieved successfully", recipe_data)), 200
 
     except Exception as e:
         return jsonify(response(False, "Something went wrong", error=str(e))), 500
