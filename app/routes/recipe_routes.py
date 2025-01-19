@@ -2,7 +2,7 @@ import json
 from flask import Blueprint, request, jsonify
 from app.database.models import User, Recipe
 from extentions import db
-from app.schemas.user_schema import RecipeSchema
+from app.schemas.schema import RecipeSchema
 from app.utils import response, thank_you_email
 from flask_jwt_extended import jwt_required, get_jwt_identity
 from marshmallow import ValidationError
