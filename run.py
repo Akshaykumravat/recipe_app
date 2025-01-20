@@ -1,4 +1,5 @@
 from flask import Flask
+from flask_cors import CORS
 from extentions import db, migrate, ma, jwt, mail
 from app.routes import user_routes, recipe_routes
 from config import Config
@@ -13,6 +14,7 @@ def create_app():
     ma.init_app(app)
     jwt.init_app(app)
     mail.init_app(app)
+    CORS(app, origins="*")
     app.register_blueprint(user_routes.bp)
     app.register_blueprint(recipe_routes.bp)
 
