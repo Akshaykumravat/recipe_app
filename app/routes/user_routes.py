@@ -2,8 +2,8 @@ import json
 from flask import Blueprint, request, jsonify
 from app.database.models import User, Favorites, Recipe
 from extentions import db
-from app.schemas.schema import UserSchema, FavoritesSchema, ChangePasswordSchema
-from app.utils import response, is_valid_email, generate_access_token_and_refresh_token, send_verification_email, paginated_result
+from app.schemas.schema import UserSchema, FavoritesSchema, ChangePasswordSchema, UpdateUserSchema, LoginSchema,VerifyEmailSchema
+from app.utils import response, is_valid_email, generate_access_token_and_refresh_token, send_verification_email, paginated_result, send_email
 from flask_jwt_extended import jwt_required, get_jwt_identity
 from datetime import datetime
 from marshmallow import ValidationError
@@ -30,10 +30,12 @@ def create_user():
     """
     try:
         data = request.get_json()
-        # print(data)
         user_schema = UserSchema()
-        validated_data = user_schema.load(data)
-        # print(validated_data)
+        
+        try:
+            validated_data = user_schema.load(data)
+        except ValidationError as err:
+            return jsonify(response(False, "Validation failed", err.messages)), 400
 
         if User.query.filter_by(email=data.get('email')).first():
             return jsonify(response(False, "email already exist")), 400
@@ -66,17 +68,18 @@ def verify_email_address():
     """
     try:
         data = request.get_json()
-        required_fields = ["email", "verification_code"]
-        for field in required_fields:
-            if field not in data:
-                return jsonify(response(False, f"{field} is required", )), 400
+        schema = VerifyEmailSchema()
 
-        user = User.query.filter_by(email=data.get('email')).first()
+        try:
+            validated_data = schema.load(data)
+        except ValidationError as err:
+            return jsonify(response(False, "Validation failed", error=err.messages)), 400
 
+        user = User.query.filter_by(email=validated_data.get('email')).first()
         if not user:
             return jsonify(response(False, "user does not exist ")), 400
 
-        if user.verification_code != data.get('verification_code'):
+        if user.verification_code != validated_data.get('verification_code'):
             return jsonify(response(False, "Invalid verification code")), 400
 
         if datetime.utcnow() > user.verification_code_expiry:
@@ -86,10 +89,10 @@ def verify_email_address():
         db.session.commit()
 
         tokens = generate_access_token_and_refresh_token(user.user_id, user.email)
-        # print(tokens, "tokens")
-        user_tokens = {}
-        user_tokens['access_token'] = tokens.get('access_token')
-        user_tokens['refresh_token'] = tokens.get('refresh_token')
+        user_tokens = {
+            'access_token': tokens.get('access_token'),
+            'refresh_token': tokens.get('refresh_token')
+        }
 
         return jsonify(response(True, "Email verified successfully", user_tokens)), 200
 
@@ -118,7 +121,17 @@ def resend_verification_code():
 
         if datetime.utcnow() > user.verification_code_expiry:
             user.reset_verification_code()
-            send_verification_email(user)
+            send_email(
+                subject="Verify Your Email Address",
+                recipients=[user.email],
+                template_name='verification_email.html',
+                context={
+                    'user': user,
+                    'verification_code': user.verification_code,
+                    'your_name': "Golden Recipe!!"
+                }
+            )
+
             return jsonify(response(True, "Verification code expired, new code sent to email")), 200
         else:
             return jsonify(response(False, "Verification code is still valid")), 400
@@ -130,20 +143,21 @@ def resend_verification_code():
 def login():
     try:
         data = request.get_json()
-        required_field = ["email", "password"]
-        for field in required_field:
-            if field not in data:
-                return jsonify(response(False, f"{field} is required", )), 400
-
-        if not is_valid_email(data.get('email')):
-            return jsonify(response(False, "invalid email address")), 400
-
-        user = User.query.filter_by(email=data.get('email'), is_deleted = False).first()
+        schema = LoginSchema()
+        
+        try:
+            validated_data = schema.load(data)
+            print(validated_data, "validated_data")
+        except ValidationError as err:
+            return jsonify(response(False, "Validation failed", error = err.messages)), 400
+        
+    
+        user = User.query.filter_by(email=validated_data.get('email'), is_deleted = False).first()
         if not user:
-            return jsonify(response(True, "user does not exist")), 400
+            return jsonify(response(False, "user does not exist")), 400
 
         if not user.is_verified:
-            return jsonify(response(True, "user is not verified")), 400
+            return jsonify(response(False, "user is not verified")), 400
 
         if not user.check_password(data.get('password')):
             return jsonify(response(False, "Invalid password")), 401
@@ -151,13 +165,13 @@ def login():
         user_schema = UserSchema()
         user_data = user_schema.dump(user)
         tokens = generate_access_token_and_refresh_token(user.user_id, user.email)
-        print(tokens, "tokens")
+
         user_data['access_token'] = tokens.get('access_token')
         user_data['refresh_token'] = tokens.get('refresh_token')
 
-        return jsonify(response(True, "login success", user_data)), 201
+        return jsonify(response(True, "login success", user_data)), 200
     except Exception as e:
-        return jsonify(response(False, "somthing went wrong.. ", error=str(e)))
+        return jsonify(response(False, "somthing went wrong..!", error=str(e)))
 
 
 @bp.route("/update-user", methods=["PATCH"])
@@ -166,24 +180,34 @@ def update_user():
     try:
         user_data = json.loads(get_jwt_identity())
         id = user_data.get('user_id')
-        data = request.get_json()
-        profile_image = data.get('profile_image')
-        if profile_image:
-            # upload image to s3 bucket
-            pass
+        data = request.form.to_dict()
+        update_user_schema = UpdateUserSchema()
+        
+
+        try:
+            validated_data = update_user_schema.load(data, partial=True)
+        except ValidationError as err:
+            return jsonify(response(False, "Validation failed", err.messages)), 400
+
 
         user = User.query.filter_by(user_id=id, is_deleted=False).first()
         if not user:
             return jsonify(response(True, "user does not exist")), 400
 
-        user.phone_number = data.get('phone_number', None)
-        user.country = data.get('country', None)
+        for field, value in validated_data.items():
+            if field == 'profile_image' and value:
+                # TODO: Upload image to S3 and get URL
+                # uploaded_url = upload_to_s3(value)
+                # setattr(user, field, uploaded_url)
+                setattr(user, field, value)  # Placeholder
+            else:
+                setattr(user, field, value)
         user_schema = UserSchema()
         user_detail = user_schema.dump(user)
         db.session.commit()
         return jsonify(response(True, "user data updated", user_detail)), 201
     except Exception as e:
-        return jsonify(response(False, "somthing went wrong.. ", error=str(e)))
+        return jsonify(response(False, "somthing went wrong.. ", error=str(e))), 500
 
 
 @bp.route("/get-user", methods=["GET"])
@@ -255,7 +279,7 @@ def change_password():
         except ValidationError as err:
             return jsonify(response(False, "Validation failed", err.messages)), 400
     
-        user = User.query.filter_by(user_id = user_id, is_verified = True, is_deleted=False).first()
+        user = User.query.filter_by(user_id = user_id, is_verified = True, is_deleted = False).first()
         if not user:
             return jsonify(response(False, "User not found")), 404
         

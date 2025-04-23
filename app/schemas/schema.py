@@ -18,6 +18,14 @@ class UserSchema(Schema):
     created_at = fields.DateTime(dump_only=True)
     updated_at = fields.DateTime(dump_only=True)
 
+class UpdateUserSchema(Schema):
+    first_name = fields.Str(validate=validate.Length(max=100))
+    last_name = fields.Str(validate=validate.Length(max=100))
+    phone_number = fields.Str(validate=validate.Length(max=20))
+    country = fields.Str(validate=validate.Length(max=20))
+    profile_image = fields.Str()
+
+
 class ChangePasswordSchema(Schema):
     old_password = fields.String(required=True)
     new_password = fields.String(required=True, validate=lambda x: len(x) >= 8,)
@@ -45,3 +53,11 @@ class FavoritesSchema(Schema):
     # Relationships (optional if you need nested data later)
     user = fields.Nested("UserSchema", dump_only=True) 
     recipe = fields.Nested("RecipeSchema", dump_only=True)
+
+class LoginSchema(Schema):
+    email = fields.Email(required=True)
+    password = fields.Str(required=True, validate=validate.Length(min=8))
+
+class VerifyEmailSchema(Schema):
+    email = fields.Email(required=True)
+    verification_code = fields.Str(required=True, validate=validate.Length(equal=6))

@@ -3,7 +3,7 @@ from flask import Blueprint, request, jsonify,Response
 from app.database.models import User, Recipe
 from extentions import db
 from app.schemas.schema import RecipeSchema
-from app.utils import response, thank_you_email
+from app.utils import response, thank_you_email, paginated_result, send_email
 from flask_jwt_extended import jwt_required, get_jwt_identity
 from marshmallow import ValidationError
 from sqlalchemy.exc import SQLAlchemyError
@@ -36,7 +36,16 @@ def create_recipe():
             new_recipe = Recipe(**validated_data)
             db.session.add(new_recipe)
             db.session.commit()
-            thank_you_email(user_data, new_recipe)
+            send_email(
+                subject="Thank You for Sharing Your Recipe",
+                recipients=[user.email],
+                template_name='thankyou.html',
+                context={
+                    'user': user,
+                    'recipe': new_recipe,
+                }
+            )
+
             recipe_data = schema.dump(new_recipe)
             return jsonify(response(True, "Recipe created successfully", recipe_data)), 201
         except Exception as e:
@@ -54,20 +63,28 @@ def get_recipes_by_user():
        
         user_data = json.loads(get_jwt_identity())
         user_id = user_data.get('user_id')
+        page = request.args.get('page', 1, type=int)
+        per_page = request.args.get('per_page', 10, type=int)
 
         if not user_id:
             return jsonify(response(False, "User ID not found in token")), 400
         
-        user = User.query.filter_by(user_id=user_id, is_verified=True, is_deleted=False).first()
+        user = User.query.filter_by(user_id = user_id, is_verified = True, is_deleted = False).first()
         if not user:
             return jsonify(response(False, "User not found or not verified")), 404
         
-        recipes = Recipe.query.filter_by(author_id=user_id).all()
+        # recipes = Recipe.query.filter_by(author_id=user_id).all()
+        query = Recipe.query.filter_by(author_id = user_id)
+        result = paginated_result(query, RecipeSchema, page, per_page)
+        response_data = {
+            'data': result['data'],
+            'meta': result['pagination']
+        }
 
-        schema = RecipeSchema(many=True)
-        recipe_data = schema.dump(recipes)
+        # schema = RecipeSchema(many=True)
+        # recipe_data = schema.dump(recipes)
 
-        return jsonify(response(True, "Recipes retrieved successfully", recipe_data)), 200
+        return jsonify(response(True, "Recipes retrieved successfully", response_data)), 200
 
     except Exception as e:
         return jsonify(response(False, "Something went wrong", error=str(e))), 500
