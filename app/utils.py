@@ -33,7 +33,7 @@ def is_valid_email(email):
     Validate the email address using the email-validator library.
     """
     try:
-        validate_email(email)
+        validate_email(email, check_deliverability=False)
         return True
     except EmailNotValidError:
         return False
@@ -134,6 +134,27 @@ def thank_you_email(user, recipe):
             recipients=[user.get('email')],
             html=html_body  
         )
+        mail.send(msg)
+    except Exception as e:
+        print(f"Error sending email: {e}")
+        return jsonify({"error": "Failed to send email"}), 500
+    
+
+def send_email(subject, recipients, template_name, context):
+    """
+    General function to send HTML emails using Flask-Mail.
+    
+    :param subject: Subject of the email
+    :param recipients: List of recipient email addresses
+    :param template_name: Name of the HTML template
+    :param context: Dictionary with template variables
+    :return: Flask response or None
+    """
+    from extentions import mail
+    try:
+        print(context, "context")
+        html_body = render_template(template_name, **context)
+        msg = Message(subject, recipients=recipients, html=html_body)
         mail.send(msg)
     except Exception as e:
         print(f"Error sending email: {e}")
