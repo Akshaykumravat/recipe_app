@@ -1,15 +1,15 @@
 import json
-from flask import Blueprint, request, jsonify
+from flask import Blueprint, request, jsonify, render_template
 from app.database.models import User, Favorites, Recipe
 from extentions import db
-from app.schemas.schema import UserSchema, FavoritesSchema, ChangePasswordSchema, UpdateUserSchema, LoginSchema,VerifyEmailSchema
-from app.utils import response, is_valid_email, generate_access_token_and_refresh_token, send_verification_email, paginated_result, send_email
+from app.schemas.schema import UserSchema, FavoritesSchema, ChangePasswordSchema, UpdateUserSchema, LoginSchema,VerifyEmailSchema, ResetPasswordSchema
+from app.utils import response, generate_access_token_and_refresh_token, send_verification_email, paginated_result, send_email
 from flask_jwt_extended import jwt_required, get_jwt_identity
 from datetime import datetime
 from marshmallow import ValidationError
 from sqlalchemy.exc import SQLAlchemyError
-
-
+import uuid
+from datetime import datetime, timedelta
 
 
 bp = Blueprint("users", __name__, url_prefix="/users")
@@ -55,8 +55,6 @@ def create_user():
         except Exception as e:
             db.session.rollback()
             return jsonify(response(False, "registration failed", error=str(e)))
-    except ValidationError as ve:
-        return jsonify(response(False, "Validation failed", error=ve.messages)), 400
     except Exception as e:
         return jsonify(response(False, "Something went wrong", error=str(e))), 500
 
@@ -152,7 +150,7 @@ def login():
             return jsonify(response(False, "Validation failed", error = err.messages)), 400
         
     
-        user = User.query.filter_by(email=validated_data.get('email'), is_deleted = False).first()
+        user = User.query.filter_by(email=validated_data.get('email'), is_deleted = False, is_verified = True).first()
         if not user:
             return jsonify(response(False, "user does not exist")), 400
 
@@ -216,7 +214,7 @@ def get_user():
     try:
         user_data = json.loads(get_jwt_identity())
         id = user_data.get('user_id')
-        user = User.query.filter_by(user_id=id, is_deleted=False).first()
+        user = User.query.filter_by(user_id=id, is_verified = True, is_deleted=False).first()
         if not user:
             return jsonify(response(False, "user does not exist ")), 400
 
@@ -300,6 +298,93 @@ def change_password():
         return jsonify(response(False, "Something went wrong..", error=str(e))), 500
 
 
+@bp.route("/forgot-password", methods=["POST"])
+def forgot_password():
+    """
+    Handle forgot password request.
+    Send a password reset link or OTP to user's email.
+    """
+    try:
+        data = request.get_json()
+        if not data:
+            return jsonify(response(False, "Invalid input: No data provided")), 400
+
+        email = data.get('email')
+        if not email:
+            return jsonify(response(False, "Email is required")), 400
+
+        user = User.query.filter_by(email=email, is_verified=True, is_deleted=False).first()
+        if not user:
+            return jsonify(response(False, "User not found or not active")), 404
+
+       
+        reset_token = str(uuid.uuid4()) 
+        print(reset_token, "reset_token") 
+        user.reset_token = reset_token
+        user.reset_token_expiry = datetime.utcnow() + timedelta(minutes=30) 
+        db.session.commit()
+
+        reset_link = f"http://localhost:5000/users/reset-password?token={reset_token}"
+        send_email(
+            subject="Reset Your Password",
+            recipients=[user.email],
+            template_name="reset_password_email.html",
+             context={
+                    'user': user,
+                    "reset_link": reset_link,
+                    "app_name": "YourAppName",
+                    "current_year": datetime.utcnow().year
+                }
+        )
+        return jsonify(response(True, "Password reset link has been sent to your email")), 200
+
+    except SQLAlchemyError as db_err:
+        db.session.rollback()
+        return jsonify(response(False, "Database error occurred", error=str(db_err))), 500
+
+    except Exception as e:
+        print("error", str(e))
+        return jsonify(response(False, "An unexpected error occurred", error=str(e))), 500
+
+
+@bp.route("/api/reset-password", methods=["POST"])
+def reset_password():
+    """
+    Reset the user's password using the reset token.
+    """
+    try:
+        data = request.get_json()
+        schema = ResetPasswordSchema()
+
+        try:
+            validated_data = schema.load(data)
+        except ValidationError as err:
+            return jsonify(response(False, "Validation failed", error=err.messages)), 400
+
+
+        user = User.query.filter_by(reset_token=validated_data.get('token'), is_verified=True, is_deleted=False).first()
+        if not user:
+            return jsonify(response(False, "Invalid or expired token")), 400
+
+        if user.reset_token_expiry and user.reset_token_expiry < datetime.utcnow():
+            return jsonify(response(False, "Reset token has expired")), 400
+
+        user.hash_password(validated_data.get('new_password')) 
+        user.reset_token = None 
+        user.reset_token_expiry = None
+        db.session.commit()
+
+        return jsonify(response(True, "Password has been reset successfully")), 200
+
+    except SQLAlchemyError as db_err:
+        db.session.rollback()
+        return jsonify(response(False, "Database error occurred", error=str(db_err))), 500
+
+    except Exception as e:
+        print("error", str(e))
+        return jsonify(response(False, "An unexpected error occurred", error=str(e))), 500
+
+
 @bp.route("/add-to-favorite", methods=["POST"])
 @jwt_required()
 def add_to_favorite():
@@ -348,3 +433,45 @@ def add_to_favorite():
     except Exception as e:
         print("error", str(e))
         return jsonify(response(False, "An unexpected error occurred", error=str(e))), 500
+    
+
+@bp.route("/favorites", methods=["GET"])
+@jwt_required()
+def get_favorites():
+    """
+    Get all favorite recipes for the authenticated user.
+    Requires a valid JWT token for authentication.
+    """
+    try:
+        user_data = json.loads(get_jwt_identity())
+        user_id = user_data.get('user_id')
+
+        user = User.query.filter_by(user_id=user_id, is_verified=True, is_deleted=False).first()
+        if not user:
+            return jsonify(response(False, "User not found or not active")), 404
+
+        favorites = Favorites.query.filter_by(user_id=user_id).all()
+
+        if not favorites:
+            return jsonify(response(True, "No favorite recipes found", [])), 200
+
+        schema = FavoritesSchema(many=True)
+        favorites_data = schema.dump(favorites)
+
+        return jsonify(response(True, "Favorite recipes fetched successfully", favorites_data)), 200
+
+    except SQLAlchemyError as db_err:
+        db.session.rollback()
+        return jsonify(response(False, "Database error occurred", error=str(db_err))), 500
+
+    except Exception as e:
+        print("error", str(e))
+        return jsonify(response(False, "An unexpected error occurred", error=str(e))), 500
+
+
+@bp.route("/reset-password")
+def reset_password_page():
+    token = request.args.get('token')
+    if not token:
+        return "Invalid reset link", 400
+    return render_template('reset-password.html', token=token)
