@@ -21,6 +21,8 @@ class User(db.Model):
     country = db.Column(db.String(20), nullable=True)
     profile_image = db.Column(db.String(255), nullable=True)
     password = db.Column(db.String(200), nullable=False)
+    reset_token = db.Column(db.String(255), nullable=True)
+    reset_token_expiry = db.Column(db.DateTime, nullable=True)
     created_at = db.Column(db.DateTime, default=db.func.now())
     updated_at = db.Column(db.DateTime, onupdate=db.func.now())
 
@@ -89,6 +91,23 @@ class Favorites(db.Model):
 
     def __repr__(self):
         return f"<Favorites(id={self.id})>"
+    
+
+class Comments (db.Model):
+    __tablename__ = "comments"
+    id = db.Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4) 
+    recipe_id = db.Column(UUID(as_uuid=True), db.ForeignKey("recipes.recipe_id"), nullable=False) 
+    user_id = db.Column(UUID(as_uuid=True), db.ForeignKey("user.user_id"), nullable=False) 
+    Comment = db.Column(db.String(255), nullable=False)
+    created_at = db.Column(db.DateTime, default=db.func.now())
+    updated_at = db.Column(db.DateTime, onupdate=db.func.now())  
+
+    # Relationships
+    recipe = db.relationship("Recipe", backref=db.backref("comments", lazy=True)) 
+    user = db.relationship("User", backref=db.backref("comments", lazy=True))  
+
+    def __repr__(self):
+        return f"<Comments(id={self.id})>"
 
 
 

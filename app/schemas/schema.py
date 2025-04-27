@@ -52,7 +52,7 @@ class FavoritesSchema(Schema):
 
     # Relationships (optional if you need nested data later)
     user = fields.Nested("UserSchema", dump_only=True) 
-    recipe = fields.Nested("RecipeSchema", dump_only=True)
+    recipe = fields.Nested("RecipeSchema", exclude=("author",), dump_only=True)
 
 class LoginSchema(Schema):
     email = fields.Email(required=True)
@@ -61,3 +61,7 @@ class LoginSchema(Schema):
 class VerifyEmailSchema(Schema):
     email = fields.Email(required=True)
     verification_code = fields.Str(required=True, validate=validate.Length(equal=6))
+
+class ResetPasswordSchema(Schema):
+    token = fields.Str(required=True, validate=validate.Length(min=36, max=36)) 
+    new_password = fields.Str(required=True, validate=validate.Length(min=8)) 
