@@ -61,21 +61,41 @@ class User(db.Model):
         self.set_verification_code()
         db.session.commit()
 
-class Recipe(db.Model):
-    __tablename__ = "recipes"
-    recipe_id = db.Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    author_id = db.Column(UUID(as_uuid=True), db.ForeignKey("user.user_id"), nullable=False)
-    title = db.Column(db.String(255), nullable=False)
-    description = db.Column(db.Text, nullable=True)
-    content = db.Column(db.Text, nullable=True)
+class RecipeCategories(db.Model):
+    __tablename__ = "recipe_categories"
+    
+    category_id = db.Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    category_name = db.Column(db.String(255), nullable=False)
     created_at = db.Column(db.DateTime, default=db.func.now())
     updated_at = db.Column(db.DateTime, onupdate=db.func.now())
 
-    # Relationship
+    # No direct relationships needed here unless needed for admin tracking
+
+    def __repr__(self):
+        return f"<RecipeCategories(category_id={self.category_id}, name={self.category_name})>"
+
+
+class Recipe(db.Model):
+    __tablename__ = "recipes"
+    
+    recipe_id = db.Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    author_id = db.Column(UUID(as_uuid=True), db.ForeignKey("user.user_id"), nullable=False)
+    category_id = db.Column(UUID(as_uuid=True), db.ForeignKey("recipe_categories.category_id"), nullable=False)
+    
+    title = db.Column(db.String(255), nullable=False)
+    description = db.Column(db.Text, nullable=True)
+    content = db.Column(db.Text, nullable=True)
+    
+    created_at = db.Column(db.DateTime, default=db.func.now())
+    updated_at = db.Column(db.DateTime, onupdate=db.func.now())
+
+    # Relationships
     author = db.relationship("User", backref=db.backref("recipes", lazy=True))
+    category = db.relationship("RecipeCategories", backref=db.backref("recipes", lazy=True))
 
     def __repr__(self):
         return f"<Recipe(recipe_id={self.recipe_id}, title={self.title})>"
+
     
 class Favorites(db.Model):
     __tablename__ = "favorites"

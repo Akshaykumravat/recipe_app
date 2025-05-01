@@ -332,7 +332,7 @@ def forgot_password():
              context={
                     'user': user,
                     "reset_link": reset_link,
-                    "app_name": "YourAppName",
+                    'app_name':  "Golden Recipe!!",
                     "current_year": datetime.utcnow().year
                 }
         )
