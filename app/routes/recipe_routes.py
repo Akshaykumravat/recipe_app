@@ -43,6 +43,7 @@ def create_recipe():
                 context={
                     'user': user,
                     'recipe': new_recipe,
+                    'app_name':  "Golden Recipe!!"
                 }
             )
 
