@@ -6,6 +6,45 @@ import string
 import random
 from datetime import timedelta, datetime
 
+# Association table for user roles
+user_roles = db.Table('user_roles',
+    db.Column('user_id', UUID(as_uuid=True), db.ForeignKey('user.user_id'), primary_key=True),
+    db.Column('role_id', UUID(as_uuid=True), db.ForeignKey('roles.role_id'), primary_key=True)
+)
+
+# Association table for role permissions
+role_permissions = db.Table('role_permissions',
+    db.Column('role_id', UUID(as_uuid=True), db.ForeignKey('roles.role_id'), primary_key=True),
+    db.Column('permission_id', UUID(as_uuid=True), db.ForeignKey('permissions.permission_id'), primary_key=True)
+)
+
+class Role(db.Model):
+    __tablename__ = "roles"
+    
+    role_id = db.Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    name = db.Column(db.String(50), unique=True, nullable=False)
+    description = db.Column(db.String(255), nullable=True)
+    created_at = db.Column(db.DateTime, default=db.func.now())
+    updated_at = db.Column(db.DateTime, onupdate=db.func.now())
+
+    # Relationships
+    users = db.relationship('User', secondary=user_roles, backref=db.backref('roles', lazy='dynamic'))
+    permissions = db.relationship('Permission', secondary=role_permissions, backref=db.backref('roles', lazy='dynamic'))
+
+    def __repr__(self):
+        return f"<Role(role_id={self.role_id}, name={self.name})>"
+
+class Permission(db.Model):
+    __tablename__ = "permissions"
+    
+    permission_id = db.Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    name = db.Column(db.String(50), unique=True, nullable=False)
+    description = db.Column(db.String(255), nullable=True)
+    created_at = db.Column(db.DateTime, default=db.func.now())
+    updated_at = db.Column(db.DateTime, onupdate=db.func.now())
+
+    def __repr__(self):
+        return f"<Permission(permission_id={self.permission_id}, name={self.name})>"
 
 class User(db.Model):
     __tablename__ = "user"
@@ -37,7 +76,7 @@ class User(db.Model):
 
     def check_password(self, password):
         """
-        Verify that passwrd is correct or not
+        Verify that password is correct or not
         """
         return check_password_hash(self.password, password)
 
@@ -60,6 +99,21 @@ class User(db.Model):
         """
         self.set_verification_code()
         db.session.commit()
+
+    def has_role(self, role_name):
+        """
+        Check if user has a specific role
+        """
+        return any(role.name == role_name for role in self.roles)
+
+    def has_permission(self, permission_name):
+        """
+        Check if user has a specific permission through any of their roles
+        """
+        for role in self.roles:
+            if any(permission.name == permission_name for permission in role.permissions):
+                return True
+        return False
 
 class RecipeCategories(db.Model):
     __tablename__ = "recipe_categories"

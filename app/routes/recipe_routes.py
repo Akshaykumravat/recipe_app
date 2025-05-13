@@ -9,6 +9,7 @@ from marshmallow import ValidationError
 from sqlalchemy.exc import SQLAlchemyError
 import pandas as pd
 import io
+from app.auth.auth_decorators import permission_required
 
 
 bp = Blueprint("recipes", __name__, url_prefix="/recipe")
@@ -58,7 +59,7 @@ def create_recipe():
     
 
 @bp.route("/user", methods=["GET"])
-@jwt_required()
+@permission_required("create_comment")
 def get_recipes_by_user():
     try:
        

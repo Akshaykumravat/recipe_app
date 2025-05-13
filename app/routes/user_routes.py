@@ -1,6 +1,8 @@
 import json
+import click
+from flask.cli import with_appcontext
 from flask import Blueprint, request, jsonify, render_template
-from app.database.models import User, Favorites, Recipe
+from app.database.models import User, Favorites, Recipe, Role
 from extentions import db
 from app.schemas.schema import UserSchema, FavoritesSchema, ChangePasswordSchema, UpdateUserSchema, LoginSchema,VerifyEmailSchema, ResetPasswordSchema
 from app.utils import response, generate_access_token_and_refresh_token, send_verification_email, paginated_result, send_email
@@ -10,6 +12,7 @@ from marshmallow import ValidationError
 from sqlalchemy.exc import SQLAlchemyError
 import uuid
 from datetime import datetime, timedelta
+from app.auth.auth_decorators import permission_required
 
 
 bp = Blueprint("users", __name__, url_prefix="/users")
@@ -173,7 +176,7 @@ def login():
 
 
 @bp.route("/update-user", methods=["PATCH"])
-@jwt_required()
+@permission_required("update_user")
 def update_user():
     try:
         user_data = json.loads(get_jwt_identity())
@@ -214,6 +217,7 @@ def get_user():
     try:
         user_data = json.loads(get_jwt_identity())
         id = user_data.get('user_id')
+
         user = User.query.filter_by(user_id=id, is_verified = True, is_deleted=False).first()
         if not user:
             return jsonify(response(False, "user does not exist ")), 400
@@ -226,7 +230,7 @@ def get_user():
 
 
 @bp.route("/delete-user", methods=['PATCH'])
-@jwt_required()
+@permission_required("delete_user")
 def delete_user():
     try:
         user_data = json.loads(get_jwt_identity())
@@ -475,3 +479,40 @@ def reset_password_page():
     if not token:
         return "Invalid reset link", 400
     return render_template('reset-password.html', token=token)
+
+
+
+@click.command("createadmin")
+@with_appcontext
+def create_admin():
+    """Create an admin user with first name, last name, email, and password"""
+    
+    first_name = click.prompt("First Name")
+    last_name = click.prompt("Last Name")
+    email = click.prompt("Email")
+    password = click.prompt("Password", hide_input=True, confirmation_prompt=True)
+
+    # Check or create 'admin' role
+    admin_role = Role.query.filter_by(name='admin').first()
+    if not admin_role:
+        admin_role = Role(name='admin')
+        db.session.add(admin_role)
+        db.session.commit()
+        click.echo("Created 'admin' role.")
+
+    # Check or create user
+    user = User.query.filter_by(email=email).first()
+    if user:
+        click.echo("User already exists.")
+    else:
+        user = User(
+            email = email,
+            first_name = first_name,
+            last_name = last_name,
+            is_verified = True
+        )
+        user.hash_password(password) 
+        user.roles.append(admin_role)
+        db.session.add(user)
+        db.session.commit()
+        click.echo(f"Admin user '{email}' created.")
