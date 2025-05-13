@@ -36,12 +36,14 @@ class RecipeSchema(Schema):
     title = fields.Str(required=True, validate=validate.Length(max=255))  
     description = fields.Str(allow_none=True) 
     content = fields.Str(required=True) 
-    author_id = fields.UUID(required=True, load_only=True)  
+    author_id = fields.UUID(required=True, load_only=True)
+    category_id = fields.UUID(required=True, load_only=True)  
     created_at = fields.DateTime(dump_only=True) 
     updated_at = fields.DateTime(dump_only=True)  
 
     # Relationships (optional if you need nested data later)
     author = fields.Nested("UserSchema", dump_only=True) 
+    # category = fields.Nested("UserSchema", dump_only=True) 
 
 class FavoritesSchema(Schema):
     id = fields.UUID(dump_only=True)  

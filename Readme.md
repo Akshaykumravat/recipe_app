@@ -5,3 +5,7 @@ export FLASK_ENV=development
 
 flask db migrate -m "Add reset_token and reset_token_expiry to User"
 flask db upgrade
+
+
+
+flask createadmin
