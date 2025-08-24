@@ -1,19 +1,54 @@
+import io
+import pandas as pd
 import json
-from flask import Blueprint, request, jsonify,Response
-from app.database.models import User, Recipe
 from extentions import db
-from app.schemas.schema import RecipeSchema
-from app.utils import response, thank_you_email, paginated_result, send_email
-from flask_jwt_extended import jwt_required, get_jwt_identity
+import app.messages as messages
 from marshmallow import ValidationError
 from sqlalchemy.exc import SQLAlchemyError
-import pandas as pd
-import io
+from flask import Blueprint, request, jsonify,Response
 from app.auth.auth_decorators import permission_required
-
+from flask_jwt_extended import jwt_required, get_jwt_identity
+from app.database.models import User, Recipe, RecipeCategories
+from app.utils import response, paginated_result, send_email, validate_schema
+from app.schemas.schema import RecipeSchema, RecipeCategoryListSchema, RecipeCategorySchema
+from app.db_driver import (get_record_by, 
+                           update_record,
+                           create_record,
+                           delete_record,
+                           get_all_records, 
+                           create_multiple_records)
 
 bp = Blueprint("recipes", __name__, url_prefix="/recipe")
 
+@bp.route("/add-category", methods=["POST"])
+@permission_required("create_category")
+def create_categories():
+    try:
+        user_data = json.loads(get_jwt_identity())
+        user_id = user_data.get('user_id')
+
+        data = request.get_json()
+        is_valid, result = validate_schema(RecipeCategoryListSchema(), data)
+
+        if not is_valid:
+            return jsonify(response(message=messages.VALIDATION_FAILED, error=result)), 400
+        
+        user = get_record_by(User, user_id=user_id, is_verified=True, is_deleted=False)
+        if not user:
+            return jsonify(response(message=messages.USER_NOT_FOUND)), 404
+
+
+        category_names = list(set(result['categories']))  
+        categories_data = [{"category_name": name} for name in category_names]
+        new_categories = create_multiple_records(RecipeCategories, categories_data)
+        serialized = RecipeCategorySchema(many=True).dump(new_categories)
+
+        return jsonify(response(True, messages.RECIPE_CATEGORIES_CREATED, serialized)), 201
+
+    except Exception as e:
+        return jsonify(response(message=messages.GENERIC_ERROR, error=str(e))), 500
+
+    
 @bp.route("/add-recipe", methods=["POST"])
 @jwt_required()
 def create_recipe():
@@ -59,7 +94,8 @@ def create_recipe():
     
 
 @bp.route("/user", methods=["GET"])
-@permission_required("create_comment")
+@jwt_required()
+# @permission_required("create_comment")
 def get_recipes_by_user():
     try:
        

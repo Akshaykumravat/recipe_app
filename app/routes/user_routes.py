@@ -1,20 +1,38 @@
+import uuid
 import json
 import click
-from flask.cli import with_appcontext
-from flask import Blueprint, request, jsonify, render_template
-from app.database.models import User, Favorites, Recipe, Role
+import app.messages as messages
 from extentions import db
-from app.schemas.schema import UserSchema, FavoritesSchema, ChangePasswordSchema, UpdateUserSchema, LoginSchema,VerifyEmailSchema, ResetPasswordSchema
-from app.utils import response, generate_access_token_and_refresh_token, send_verification_email, paginated_result, send_email
-from flask_jwt_extended import jwt_required, get_jwt_identity
-from datetime import datetime
+from flask.cli import with_appcontext
 from marshmallow import ValidationError
-from sqlalchemy.exc import SQLAlchemyError
-import uuid
 from datetime import datetime, timedelta
+from sqlalchemy.exc import SQLAlchemyError
 from app.auth.auth_decorators import permission_required
+from app.database.models import User, Favorites, Recipe, Role
+from flask_jwt_extended import jwt_required, get_jwt_identity
+from flask import Blueprint, request, jsonify, render_template
+from flask import current_app as app
+from app.db_driver import (get_record_by, 
+                           update_record,
+                           create_record,
+                           delete_record,
+                           get_all_records)
 
+from app.schemas.schema import (UserSchema, 
+                                LoginSchema,
+                                FavoritesSchema, 
+                                UpdateUserSchema, 
+                                VerifyEmailSchema, 
+                                ResetPasswordSchema,
+                                ChangePasswordSchema) 
+from app.utils import (response, 
+                       send_email, 
+                       validate_schema,
+                       paginated_result, 
+                       send_verification_email, 
+                       generate_access_token_and_refresh_token) 
 
+ 
 bp = Blueprint("users", __name__, url_prefix="/users")
 
 
@@ -22,7 +40,6 @@ bp = Blueprint("users", __name__, url_prefix="/users")
 def create_user():
     """
         This route creates a new user.
-
         Expected payload:
         {
             "first_name": "John",
@@ -33,33 +50,43 @@ def create_user():
     """
     try:
         data = request.get_json()
-        user_schema = UserSchema()
+        is_valid, result = validate_schema(UserSchema(), data)
+
+        if not is_valid:
+            return jsonify(response(message=messages.VALIDATION_FAILED, error=result)), 400
         
-        try:
-            validated_data = user_schema.load(data)
-        except ValidationError as err:
-            return jsonify(response(False, "Validation failed", err.messages)), 400
-
-        if User.query.filter_by(email=data.get('email')).first():
-            return jsonify(response(False, "email already exist")), 400
+        if get_record_by(User,email=data.get('email')):
+            return jsonify(response(False, messages.EMAIL_EXIST)), 400
 
         try:
-            user = User(**validated_data)
+            user = create_record(User, result)
             user.hash_password(data.get('password'))
             user.set_verification_code()
+            normal_role = Role.query.filter_by(name="user").first()
+            if normal_role:
+                user.roles.append(normal_role)
             db.session.add(user)
             db.session.commit()
 
-            send_verification_email(user)
+            send_email(
+                subject="Verify Your Email Address",
+                recipients=[user.email],
+                template_name='verification_email.html',
+                context={
+                    'user': user,
+                    'verification_code': user.verification_code,
+                    'your_name': "Golden Recipe!!"
+                }
+            )
 
-            user_data = user_schema.dump(user)
+            user_data = UserSchema().dump(user)
             return jsonify(
-                response(True, "User registration successful, verification code sent to email", user_data)), 201
+                response(True, messages.REGISTRAION_SUCCESS, user_data)), 201
         except Exception as e:
             db.session.rollback()
-            return jsonify(response(False, "registration failed", error=str(e)))
+            return jsonify(response(False, messages.REGISTRATION_FAILED, error=str(e)))
     except Exception as e:
-        return jsonify(response(False, "Something went wrong", error=str(e))), 500
+        return jsonify(response(False, messages.GENERIC_ERROR, error=str(e))), 500
 
 
 @bp.route("/verify-email", methods=['POST'])
@@ -69,18 +96,15 @@ def verify_email_address():
     """
     try:
         data = request.get_json()
-        schema = VerifyEmailSchema()
-
-        try:
-            validated_data = schema.load(data)
-        except ValidationError as err:
-            return jsonify(response(False, "Validation failed", error=err.messages)), 400
-
-        user = User.query.filter_by(email=validated_data.get('email')).first()
+        is_valid, result = validate_schema(VerifyEmailSchema(), data)
+        if not is_valid:
+            return jsonify(response(message="Validation failed", error=result)), 400
+        
+        user = get_record_by(User, email=result.get('email'))
         if not user:
             return jsonify(response(False, "user does not exist ")), 400
 
-        if user.verification_code != validated_data.get('verification_code'):
+        if user.verification_code != result.get('verification_code'):
             return jsonify(response(False, "Invalid verification code")), 400
 
         if datetime.utcnow() > user.verification_code_expiry:
@@ -144,71 +168,57 @@ def resend_verification_code():
 def login():
     try:
         data = request.get_json()
-        schema = LoginSchema()
-        
-        try:
-            validated_data = schema.load(data)
-            print(validated_data, "validated_data")
-        except ValidationError as err:
-            return jsonify(response(False, "Validation failed", error = err.messages)), 400
-        
-    
-        user = User.query.filter_by(email=validated_data.get('email'), is_deleted = False, is_verified = True).first()
-        if not user:
-            return jsonify(response(False, "user does not exist")), 400
+        is_valid, result = validate_schema(LoginSchema(), data)
 
-        if not user.is_verified:
-            return jsonify(response(False, "user is not verified")), 400
+        if not is_valid:
+            return jsonify(response(message=messages.VALIDATION_FAILED, error=result)), 400
+        
+        user = get_record_by(User, email=result.get('email'), is_deleted = False, is_verified = True)
+        if not user:
+            return jsonify(response(message=messages.USER_NOT_FOUND)), 400
 
         if not user.check_password(data.get('password')):
-            return jsonify(response(False, "Invalid password")), 401
+            return jsonify(response(message=messages.INVALID_PASSWORD)), 400
 
-        user_schema = UserSchema()
-        user_data = user_schema.dump(user)
+        user_data = UserSchema().dump(user)
         tokens = generate_access_token_and_refresh_token(user.user_id, user.email)
-
-        user_data['access_token'] = tokens.get('access_token')
-        user_data['refresh_token'] = tokens.get('refresh_token')
-
-        return jsonify(response(True, "login success", user_data)), 200
+        user_data.update(tokens)
+        app.logger.info(f"[LOGIN] Successful login: {user.email}")
+        return jsonify(response(True, messages.LOGIN_SUCCESS, user_data)), 200
     except Exception as e:
-        return jsonify(response(False, "somthing went wrong..!", error=str(e)))
+        app.logger.error("[LOGIN] Unexpected error occurred", exc_info=True)
+        return jsonify(response(message=messages.GENERIC_ERROR, error=str(e))), 500
 
 
 @bp.route("/update-user", methods=["PATCH"])
-@permission_required("update_user")
+# @permission_required("update_users")
+@jwt_required()
 def update_user():
     try:
         user_data = json.loads(get_jwt_identity())
         id = user_data.get('user_id')
         data = request.form.to_dict()
-        update_user_schema = UpdateUserSchema()
+
+        is_valid, result = validate_schema(UpdateUserSchema(), data, partial=True)
+        if not is_valid:
+            return jsonify(response(False, "Validation failed", error=result)), 400
         
-
-        try:
-            validated_data = update_user_schema.load(data, partial=True)
-        except ValidationError as err:
-            return jsonify(response(False, "Validation failed", err.messages)), 400
-
-
-        user = User.query.filter_by(user_id=id, is_deleted=False).first()
+        user = get_record_by(User, user_id=id, is_deleted = False, is_verified = True)
         if not user:
             return jsonify(response(True, "user does not exist")), 400
 
-        for field, value in validated_data.items():
-            if field == 'profile_image' and value:
-                # TODO: Upload image to S3 and get URL
-                # uploaded_url = upload_to_s3(value)
-                # setattr(user, field, uploaded_url)
-                setattr(user, field, value)  # Placeholder
-            else:
-                setattr(user, field, value)
-        user_schema = UserSchema()
-        user_detail = user_schema.dump(user)
+        if 'profile_image' in result and result['profile_image']:
+            value = result['profile_image']
+            # TODO: implement upload logic
+            # uploaded_url = upload_to_s3(value)  
+            # result['profile_image'] = uploaded_url  
+
+        user = update_record(user, result)
+        user_detail = UserSchema().dump(user)
         db.session.commit()
         return jsonify(response(True, "user data updated", user_detail)), 201
     except Exception as e:
-        return jsonify(response(False, "somthing went wrong.. ", error=str(e))), 500
+        return jsonify(response(message="somthing went wrong.. ", error=str(e))), 500
 
 
 @bp.route("/get-user", methods=["GET"])
@@ -218,15 +228,14 @@ def get_user():
         user_data = json.loads(get_jwt_identity())
         id = user_data.get('user_id')
 
-        user = User.query.filter_by(user_id=id, is_verified = True, is_deleted=False).first()
+        user = get_record_by(User, user_id=id, is_deleted = False, is_verified = True)
         if not user:
             return jsonify(response(False, "user does not exist ")), 400
 
-        user_schema = UserSchema()
-        user_data = user_schema.dump(user)
+        user_data = UserSchema().dump(user)
         return jsonify(response(True, "user retrived successfully", user_data))
     except Exception as e:
-        return jsonify({"message": "somthing went wrong", "error": str(e)})
+        return jsonify(response(message="somthing went wrong.. ", error=str(e))), 500
 
 
 @bp.route("/delete-user", methods=['PATCH'])
@@ -235,7 +244,7 @@ def delete_user():
     try:
         user_data = json.loads(get_jwt_identity())
         id = user_data.get('user_id')
-        user = User.query.filter_by(user_id=id).first()
+        user = get_record_by(User, user_id=id, is_deleted = False, is_verified = True)
         if not user:
             return jsonify(response(True, "user does not exist")), 400
 
@@ -247,12 +256,12 @@ def delete_user():
     
 
 @bp.route("/get-all-user", methods=["GET"])
-@jwt_required()
+# @jwt_required()
 def get_all_users():
     try:
         page = request.args.get('page', 1, type=int)
         per_page = request.args.get('per_page', 10, type=int)
-        query = User.query.filter_by(is_deleted = False)
+        query = get_all_records(User, is_deleted = False)
         result = paginated_result(query, UserSchema, page, per_page)
         response_data = {
             'data': result['data'],
@@ -274,26 +283,21 @@ def change_password():
         user_data = json.loads(get_jwt_identity())
         user_id  = user_data.get('user_id')
         data =  request.get_json()
-        schema = ChangePasswordSchema()
+        is_valid, result = validate_schema(ChangePasswordSchema(), data)
 
-        try:
-            validated_data = schema.load(data)
-        except ValidationError as err:
-            return jsonify(response(False, "Validation failed", err.messages)), 400
-    
-        user = User.query.filter_by(user_id = user_id, is_verified = True, is_deleted = False).first()
+        if not is_valid:
+            return jsonify(response(message="Validation failed", error=result)), 400
+        
+        user = get_record_by(User, user_id=user_id, is_deleted = False, is_verified = True)
         if not user:
             return jsonify(response(False, "User not found")), 404
         
-
-        if not user.check_password(validated_data['old_password']):
-            return jsonify(response(False, "Invalid current password")), 401
+        if not user.check_password(result['old_password']):
+            return jsonify(response(False, "Invalid current password")), 400
         
         user.hash_password(data.get('new_password'))
         db.session.commit()
-
-        user_schema = UserSchema()
-        user_data = user_schema.dump(user)
+        user_data = UserSchema().dump(user)
         return jsonify(response(True, "password updated success", user_data)), 200
     except SQLAlchemyError as db_err:
         db.session.rollback()
