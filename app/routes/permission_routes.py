@@ -36,3 +36,16 @@ def create_permission():
         return jsonify(response(True, "Permission created successfully", Permission_data)), 201
     except Exception as e:
             return jsonify(response(False, "Something went wrong", error=str(e))), 500
+    
+
+@bp.route('/get-permissions', methods=['GET'])
+def get_permissions():
+    try:
+        schema = PermissionSchema(many=True)  # many=True for list serialization
+        permissions = Permission.query.all()
+
+        permission_data = schema.dump(permissions)
+        return jsonify(response(True, "Permissions fetched successfully", permission_data)), 200
+
+    except Exception as e:
+        return jsonify(response(False, "Something went wrong", error=str(e))), 500

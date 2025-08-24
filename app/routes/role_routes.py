@@ -37,6 +37,17 @@ def create_role():
     except Exception as e:
             return jsonify(response(False, "Something went wrong", error=str(e))), 500
 
+@bp.route('/get-roles', methods=['GET'])
+def get_roles():
+    try:
+        schema = RoleSchema(many=True)  
+        roles = Role.query.all()
+        
+        role_data = schema.dump(roles)
+        return jsonify(response(True, "Roles fetched successfully", role_data)), 200
+
+    except Exception as e:
+        return jsonify(response(False, "Something went wrong", error=str(e))), 500
 
 
 @bp.route('/roles/<role_id>/assign-permissions', methods=['POST'])

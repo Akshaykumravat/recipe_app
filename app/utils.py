@@ -1,30 +1,25 @@
-from email_validator import validate_email, EmailNotValidError
-from flask_jwt_extended import create_access_token, create_refresh_token
+import json
 from config import Config
 from flask_mail import Message
-from flask import jsonify
-from flask import render_template
-# from extentions import mail
-import json
+from marshmallow import ValidationError
+from flask import jsonify, render_template
+from email_validator import validate_email, EmailNotValidError
+from flask_jwt_extended import create_access_token, create_refresh_token
 
 
-# from app.extensions import mail
-
-def response(success, message, data=None, error=None):
+def response(success=False, message=None, data=None, error=None):
     """
     Utility to create a consistent JSON response.
-
         : success: bool
         : message: str
         : data: dict or list (default: None)
         : error: str or list (default: None)
-
     """
     return {
         "success": success,
         "message": message,
-        "data": data if data else {},
-        "error": error if error else ""
+        "data": data if data is not None else {},
+        "error": error if error is not None else {}
     }
 
 
@@ -57,22 +52,6 @@ def generate_access_token_and_refresh_token(user_id, email):
     }
     return tokens
 
-
-# def send_verification_email(user):
-#     """
-#     Send a verification email with a code.
-#     """
-#     from extentions import mail
-#     msg = Message(
-#         "Verify Your Email Address",
-#         recipients=[user.email],
-#         body=f"Your verification code is {user.verification_code}. It will expire in 2 minutes."
-#     )
-#     try:
-#         mail.send(msg)
-#     except Exception as e:
-#         print(f"Error sending email: {e}")
-#         return jsonify({"error": "Failed to send email"}), 500
 
 def send_verification_email(user):
     """
@@ -116,30 +95,6 @@ def paginated_result(query, model_schema, page=1, per_page=10):
     }
 
 
-def thank_you_email(user, recipe):
-    """
-    Send a ThankYou email.
-    """
-    from extentions import mail
-
-    try:
-        print(user, "user")
-        html_body = render_template('thankyou.html',
-            user=user,
-            recipe=recipe,
-            your_name = "Golden Recipe!!"
-        )
-
-        msg = Message("Thank You for Sharing Your Recipe",
-            recipients=[user.get('email')],
-            html=html_body  
-        )
-        mail.send(msg)
-    except Exception as e:
-        print(f"Error sending email: {e}")
-        return jsonify({"error": "Failed to send email"}), 500
-    
-
 def send_email(subject, recipients, template_name, context):
     """
     General function to send HTML emails using Flask-Mail.
@@ -159,3 +114,15 @@ def send_email(subject, recipients, template_name, context):
     except Exception as e:
         print(f"Error sending email: {e}")
         return jsonify({"error": "Failed to send email"}), 500
+    
+
+def validate_schema(schema, data, partial=False):
+    """
+    Validates input data using the given Marshmallow schema.
+    Returns a tuple: (is_valid: bool, result: validated_data or error_messages)
+    """
+    try:
+        validated_data = schema.load(data, partial=partial)
+        return True, validated_data
+    except ValidationError as err:
+        return False, err.messages

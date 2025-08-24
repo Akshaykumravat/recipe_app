@@ -1,4 +1,4 @@
-from marshmallow import Schema, fields, validate, post_load
+from marshmallow import Schema, fields, validate, post_load,ValidationError
 
 
 
@@ -67,3 +67,18 @@ class VerifyEmailSchema(Schema):
 class ResetPasswordSchema(Schema):
     token = fields.Str(required=True, validate=validate.Length(min=36, max=36)) 
     new_password = fields.Str(required=True, validate=validate.Length(min=8)) 
+
+
+
+class RecipeCategorySchema(Schema):
+    category_id = fields.UUID()
+    category_name = fields.String()
+    created_at = fields.DateTime()
+    updated_at = fields.DateTime(allow_none=True)
+
+class RecipeCategoryListSchema(Schema):
+    categories = fields.List(fields.String(required=True), required=True)
+
+    def validate_categories(self, data, **kwargs):
+        if not data.get("categories"):
+            raise ValidationError("At least one category name is required.", field_name="categories")
